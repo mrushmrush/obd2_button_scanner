@@ -49,6 +49,7 @@ static bool stop_thread_flag = false;
 
 //****************** Local Function Prototypes *******************************
 static void *serial_handler_thread(void *dummy);
+static int read_elm327(int fd, char *buf, int n);
 
 //****************************************************************************
 //  start_serial_handler_thread()
@@ -144,19 +145,26 @@ static void *serial_handler_thread(void *data)
         return NULL;
     }
 
-    FILE *serial_stream = fdopen (serial_port, "r+");
     FILE *obd_file_out = fopen ("./obdout.txt", "w");
+    char input_buffer[256];
+    char output_buffer[256];
+    int num_chars;
 
-    char *input_buffer = NULL;
-    size_t input_buffer_size = 0;
+
+    strcpy (output_buffer, "atsp0\n");
+    write (serial_port, output_buffer,strlen(output_buffer));
+    num_chars = read_elm327(serial_port, input_buffer, 256);
+    fwrite (input_buffer, 1, num_chars, obd_file_out);
+
+#if 0
 
 
-    fputs ("atsp0\n", serial_stream); fflush(serial_stream);
-    getline (&input_buffer, &input_buffer_size, serial_stream);
+
     printf ("%s", input_buffer);
 
     fputs ("atl1\n", serial_stream); fflush(serial_stream);
     getline (&input_buffer, &input_buffer_size, serial_stream);
+    fwrite (obd_file_out, input_buffer, 
     printf ("%s", input_buffer);
 
     fputs ("atal\n", serial_stream); fflush(serial_stream);
@@ -171,14 +179,12 @@ static void *serial_handler_thread(void *data)
         printf ("%s", input_buffer);
         fputs (input_buffer, obd_file_out);
     } //end while
-
+#endif
     // Do whatever work remains before exiting
     // ...
 
-    fclose (serial_stream);
     fclose (obd_file_out);
     close (serial_port);
-    free (input_buffer);
     pthread_exit(NULL);
 
     return NULL;
@@ -191,7 +197,7 @@ static void *serial_handler_thread(void *data)
    \param n size of buf
    \return number of bytes put in buf, or -1 on error
 */
-int readserialdata(int fd, char *buf, int n) {
+int read_elm327(int fd, char *buf, int n) {
 	char *bufptr = buf; // current position in buf
 
 	struct timeval start,curr; // For timing out
@@ -216,17 +222,19 @@ int readserialdata(int fd, char *buf, int n) {
 			perror("Couldn't gettimeofday");
 			return -1;
 		}
-		if(OBDCOMM_TIMEOUT < 1000000l*(curr.tv_sec - start.tv_sec) +
-			(curr.tv_usec - start.tv_usec)) {
+//		if(OBDCOMM_TIMEOUT < 1000000l*(curr.tv_sec - start.tv_sec) +
+//			(curr.tv_usec - start.tv_usec)) {
+        if (2 < (curr.tv_sec - start.tv_sec))
+        {
 			printf("Timeout!\n");
 			return -1;
 		}
 	} while (retval == 0 || bufptr[-1] != '>');
 
-	appendseriallog(buf, SERIAL_IN);
 	return retval;
 }
 
+#if 0
 void blindcmd(int fd, const char *cmd, int no_response) {
 	char outstr[1024];
 	snprintf(outstr, sizeof(outstr), "%s%s\0", cmd, OBDCMD_NEWLINE);
@@ -237,3 +245,4 @@ void blindcmd(int fd, const char *cmd, int no_response) {
 		readtonextprompt(fd);
 	}
 }
+#endif
