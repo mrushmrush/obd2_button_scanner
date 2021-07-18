@@ -44,9 +44,9 @@
 #include <sys/stat.h>
 #include <fcntl.h>
 #include <syslog.h>
+#include <termios.h>
 
-#include "serial_input_handler_thd.h"
-#include "serial_output_handler_thd.h"
+#include "serial_in_thd.h"
 
 
 //********************** Local Constants *************************************
@@ -60,6 +60,7 @@
 
 //********************** Global extern instances ************************************
     struct termios tty;
+    int serial_port; 
 
 //****************** Local Function Prototypes *******************************
 
@@ -79,12 +80,14 @@ int main (int argc, char *argv[])
     // We want to run in the background
     //daemon (0, 0);
 
+    int serial_port = open("/dev/ttyUSB0", O_RDWR);
+    //if serial port is opened, continue
 
     // Set up serial port parameters
     // Read in existing settings, and handle any error
-    if(tcgetattr(serial_port_out, &tty) != 0) {
+    if(tcgetattr(serial_port, &tty) != 0) {
         printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
-        return NULL;
+        return -1;
     }
 
     tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity (most common)
@@ -115,31 +118,55 @@ int main (int argc, char *argv[])
     cfsetospeed(&tty, B500000);
 
     // Save tty settings, also checking for error
-    if (tcsetattr(serial_port_out, TCSANOW, &tty) != 0) {
+    if (tcsetattr(serial_port, TCSANOW, &tty) != 0) {
         printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
-        return NULL;
+        return -1;
     }
 
 
+
     // FIXME: CANNOT OPEN BOTH RDONLY AND WRONLY IN SAME PROCESS
-    pthread_t input_tid = start_serial_input_handler_thread(SERIAL_PORT_FQN);
+    pthread_t input_tid = start_serial_handler_thread(&serial_port);
     // Wait for signal
 
-
-    int serial_port_out = open("/dev/ttyUSB0", O_RDWR);
-
-    //if serial port is opened, continue
+#if 0
+    strcpy (output_buffer, "atsp0\n");
+    write (serial_port, output_buffer,strlen(output_buffer));
+    num_chars = read_elm327(serial_port, input_buffer, 256);
+    fwrite (input_buffer, 1, num_chars, obd_file_out);
 
 
     // Send setup messages
+    printf ("%s", input_buffer);
 
+    fputs ("atl1\n", serial_stream); fflush(serial_stream);
+    getline (&input_buffer, &input_buffer_size, serial_stream);
+    fwrite (obd_file_out, input_buffer, 
+    printf ("%s", input_buffer);
 
+    fputs ("atal\n", serial_stream); fflush(serial_stream);
+    getline (&input_buffer, &input_buffer_size, serial_stream);
+    printf ("%s", input_buffer);
 
-    sleep(30);
-    stop_serial_input_handler_thd(input_tid);
-    stop_serial_output_handler_thd(output_tid);
-    sleep (2);  //allow 'stop' command to reach all destinations
+    fputs ("atma\n", serial_stream); fflush(serial_stream);
+#endif
+    
+    char *input_buffer = malloc(256);
+    size_t size_of_buffer = 256;
+    int num_read;
 
+    while (num_read = getline (&input_buffer, &size_of_buffer, stdin))
+    {
+        if (strstr("quit", input_buffer))
+        {
+            stop_serial_handler_thd(input_tid);
+            close (serial_port);
+            exit(-1);
+        }
+
+//        write (stdin, input_buffer, strlen(input_buffer));
+        write (serial_port, input_buffer, strlen(input_buffer));
+    }
 
     return 0;
 }  //End Main

@@ -27,7 +27,7 @@
 #include <sched.h>
 #include <fcntl.h>
 
-#include "serial_handler_thd.h"
+#include "serial_in_thd.h"
 
 //********************** Local Constants *************************************
 //loop_state flags
@@ -101,54 +101,30 @@ static void *serial_handler_thread(void *data)
     printf ("Serial Handler Thread started\n");fflush(stdout); //TESTTESTTEST
 
     // Open the serial port. Change device path as needed (currently set to an standard FTDI USB-UART cable type device)
-    int serial_port = open("/dev/ttyUSB0", O_RDONLY);
+    FILE *serial_port =  data;
 
-    FILE *obd_file_out = fopen ("./obdout.txt", "w");
-    char input_buffer[256];
-    char output_buffer[256];
+    char *input_buffer = malloc(256);
     int num_chars;
+    size_t input_buffer_size = 256;
 
 
-    strcpy (output_buffer, "atsp0\n");
-    write (serial_port, output_buffer,strlen(output_buffer));
-    num_chars = read_elm327(serial_port, input_buffer, 256);
-    fwrite (input_buffer, 1, num_chars, obd_file_out);
-
-#if 0
-
-
-
-    printf ("%s", input_buffer);
-
-    fputs ("atl1\n", serial_stream); fflush(serial_stream);
-    getline (&input_buffer, &input_buffer_size, serial_stream);
-    fwrite (obd_file_out, input_buffer, 
-    printf ("%s", input_buffer);
-
-    fputs ("atal\n", serial_stream); fflush(serial_stream);
-    getline (&input_buffer, &input_buffer_size, serial_stream);
-    printf ("%s", input_buffer);
-
-    fputs ("atma\n", serial_stream); fflush(serial_stream);
 
     while (!stop_thread_flag)
     {
-        getline (&input_buffer, &input_buffer_size, serial_stream);
+        getline (&input_buffer, &input_buffer_size, serial_port);
         printf ("%s", input_buffer);
-        fputs (input_buffer, obd_file_out);
+//        fputs (input_buffer, obd_file_out);
     } //end while
-#endif
     // Do whatever work remains before exiting
     // ...
 
-    fclose (obd_file_out);
-    close (serial_port);
     pthread_exit(NULL);
 
     return NULL;
 }
 
 
+#if 0
 /// Collect data up to the next prompt
 /** Reads up to the next '>'
    \param buf buffer to fill
@@ -192,7 +168,6 @@ int read_elm327(int fd, char *buf, int n) {
 	return retval;
 }
 
-#if 0
 void blindcmd(int fd, const char *cmd, int no_response) {
 	char outstr[1024];
 	snprintf(outstr, sizeof(outstr), "%s%s\0", cmd, OBDCMD_NEWLINE);
