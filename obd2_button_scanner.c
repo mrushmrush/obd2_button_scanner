@@ -21,6 +21,8 @@
 //  Description:
 //  
 //  
+// gcc obd2_button_scanner.c serial_in_thd.c serial_in_thd.h -lpthread
+//
 //****************************************************************************
 
 
