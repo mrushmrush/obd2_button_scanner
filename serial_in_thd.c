@@ -46,6 +46,8 @@ static bool stop_thread_flag = false;
 
 
 //********************** Global instances ************************************
+extern int serial_port;
+extern FILE *serial_port_fp;
 
 //****************** Local Function Prototypes *******************************
 static void *serial_handler_thread(void *dummy);
@@ -101,17 +103,16 @@ static void *serial_handler_thread(void *data)
     printf ("Serial Handler Thread started\n");fflush(stdout); //TESTTESTTEST
 
     // Open the serial port. Change device path as needed (currently set to an standard FTDI USB-UART cable type device)
-    FILE *serial_port =  data;
 
-    char *input_buffer = malloc(256);
+    char *input_buffer = NULL;
     int num_chars;
-    size_t input_buffer_size = 256;
+    size_t input_buffer_size = 0;
 
 
 
     while (!stop_thread_flag)
     {
-        getline (&input_buffer, &input_buffer_size, serial_port);
+        getline (&input_buffer, &input_buffer_size, serial_port_fp);
         printf ("%s", input_buffer);
 //        fputs (input_buffer, obd_file_out);
     } //end while

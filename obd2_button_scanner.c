@@ -63,6 +63,7 @@
 //********************** Global extern instances ************************************
     struct termios tty;
     int serial_port; 
+    FILE * serial_port_fp; 
 
 //****************** Local Function Prototypes *******************************
 
@@ -82,8 +83,9 @@ int main (int argc, char *argv[])
     // We want to run in the background
     //daemon (0, 0);
 
-    int serial_port = open("/dev/ttyUSB0", O_RDWR);
+    serial_port = open(SERIAL_PORT_FQN, O_RDWR);
     //if serial port is opened, continue
+    serial_port_fp = fdopen (serial_port, "r+");
 
     // Set up serial port parameters
     // Read in existing settings, and handle any error
@@ -153,21 +155,22 @@ int main (int argc, char *argv[])
     fputs ("atma\n", serial_stream); fflush(serial_stream);
 #endif
     
-    char *input_buffer = malloc(256);
-    size_t size_of_buffer = 256;
+    char *input_buffer = NULL;
+    size_t size_of_buffer = 0;
     int num_read;
 
     while (num_read = getline (&input_buffer, &size_of_buffer, stdin))
     {
-        if (strstr("quit", input_buffer))
+        if (strstr(input_buffer, "quit"))
         {
             stop_serial_handler_thd(input_tid);
-            close (serial_port);
+        //    close (serial_port);
             exit(-1);
         }
 
+        fputs(input_buffer, serial_port_fp);fflush(serial_port_fp);
 //        write (stdin, input_buffer, strlen(input_buffer));
-        write (serial_port, input_buffer, strlen(input_buffer));
+//        write (serial_port, input_buffer, strlen(input_buffer));
     }
 
     return 0;
