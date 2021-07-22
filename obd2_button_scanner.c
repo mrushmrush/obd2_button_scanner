@@ -49,6 +49,7 @@
 #include <termios.h>
 
 #include "serial_in_thd.h"
+#include "uart.h"
 
 
 //********************** Local Constants *************************************
@@ -61,9 +62,6 @@
 //********************** Local Variables *************************************
 
 //********************** Global extern instances ************************************
-    struct termios tty;
-    int serial_port; 
-    FILE *serial_port_fp; 
 
 //****************** Local Function Prototypes *******************************
 
@@ -83,55 +81,21 @@ int main (int argc, char *argv[])
     // We want to run in the background
     //daemon (0, 0);
 
-    serial_port = open(SERIAL_PORT_FQN, O_RDWR);
-    //if serial port is opened, continue
-    serial_port_fp = fdopen (serial_port, "r+");
+    serial_t *obd2_port = serial_create ();
 
-    // Set up serial port parameters
-    // Read in existing settings, and handle any error
-    if(tcgetattr(serial_port, &tty) != 0) {
-        printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
-        return -1;
+    if (!obd2_port)
+    {
+        printf ("Error creating obd2_port\n");
+        exit -1;
     }
 
-    tty.c_cflag &= ~PARENB; // Clear parity bit, disabling parity (most common)
-    tty.c_cflag &= ~CSTOPB; // Clear stop field, only one stop bit used in communication (most common)
-    tty.c_cflag &= ~CSIZE; // Clear all bits that set the data size 
-    tty.c_cflag |= CS8; // 8 bits per byte (most common)
-    tty.c_cflag &= ~CRTSCTS; // Disable RTS/CTS hardware flow control (most common)
-    tty.c_cflag |= CREAD | CLOCAL; // Turn on READ & ignore ctrl lines (CLOCAL = 1)
-
-    tty.c_lflag &= ~ICANON;
-    tty.c_lflag &= ~ECHO; // Disable echo
-    tty.c_lflag &= ~ECHOE; // Disable erasure
-    tty.c_lflag &= ~ECHONL; // Disable new-line echo
-    tty.c_lflag &= ~ISIG; // Disable interpretation of INTR, QUIT and SUSP
-    tty.c_iflag &= ~(IXON | IXOFF | IXANY); // Turn off s/w flow ctrl
-    tty.c_iflag &= ~(IGNBRK|BRKINT|PARMRK|ISTRIP|INLCR|IGNCR|ICRNL); // Disable any special handling of received bytes
-
-    tty.c_oflag &= ~OPOST; // Prevent special interpretation of output bytes (e.g. newline chars)
-    tty.c_oflag &= ~ONLCR; // Prevent conversion of newline to carriage return/line feed
-    // tty.c_oflag &= ~OXTABS; // Prevent conversion of tabs to spaces (NOT PRESENT ON LINUX)
-    // tty.c_oflag &= ~ONOEOT; // Prevent removal of C-d chars (0x004) in output (NOT PRESENT ON LINUX)
-
-    tty.c_cc[VTIME] = 50;    // Wait for up to 5s (50 deciseconds), returning as soon as any data is received.
-    tty.c_cc[VMIN] = 0;
-
-    // Set in/out baud rate to be 9600
-    cfsetispeed(&tty, B500000);
-    cfsetospeed(&tty, B500000);
-
-    // Save tty settings, also checking for error
-    if (tcsetattr(serial_port, TCSANOW, &tty) != 0) {
-        printf("Error %i from tcsetattr: %s\n", errno, strerror(errno));
-        return -1;
+    if (0 > serial_connect (obd2_port, SERIAL_PORT_FQN, 500000))
+    {
+        printf ("Error connecting to obd2_port\n");
+        exit -1;
     }
 
 
-
-    // FIXME: CANNOT OPEN BOTH RDONLY AND WRONLY IN SAME PROCESS
-    pthread_t input_tid = start_serial_handler_thread(&serial_port);
-    // Wait for signal
 
 #if 0
     strcpy (output_buffer, "atsp0\n");
@@ -155,46 +119,68 @@ int main (int argc, char *argv[])
     fputs ("atma\n", serial_port_fp); fflush(serial_port_fp);
 #endif
     
-    fputs ("atl0\n", serial_port_fp); fflush(serial_port_fp); //linefeeds off
-    sleep(3);
+    serial_send (obd2_port, "atl0\n", 5); //linefeeds off
+//    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
-    fputs ("ath0\n", serial_port_fp); fflush(serial_port_fp); //headers off
-    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-    fputs ("ats1\n", serial_port_fp); fflush(serial_port_fp); //print spaces
-    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-    fputs ("atal\n", serial_port_fp); fflush(serial_port_fp); // allow long messages
-    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-    fputs ("ate0\n", serial_port_fp); fflush(serial_port_fp); //echo off
-    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-    fputs ("atsp0\n", serial_port_fp); fflush(serial_port_fp); //automatic protocol search
-    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-   // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //use to mask responses
+    // add '>' as delimiter?????
 
-    char *input_buffer = NULL;
-    size_t size_of_buffer = 0;
-    int num_read;
+    serial_send (obd2_port, "ath0\n", 5); //headers off
+//    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
 
-    while (num_read = getline (&input_buffer, &size_of_buffer, stdin))
+    serial_send (obd2_port, "ats1\n", 5); //print spaces   <-- //TODO: Look into removing spaces to speed up
+//    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+
+    serial_send (obd2_port, "atal\n", 5); // allow long messages
+//    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+
+    serial_send (obd2_port, "ate0\n", 5); //echo off
+//    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+
+    serial_send (obd2_port, "atsp0\n", 6); //automatic protocol search
+//    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+
+    //TODO: use to mask responses
+   // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //
+
+
+
+    //// SET UP STDIN FOR OUR USE
+    static struct termios oldt, newt;
+    tcgetattr( STDIN_FILENO, &oldt);
+    newt = oldt;
+    newt.c_lflag &= ~(ICANON);
+    newt.c_cc[VTIME] = 1;
+    newt.c_cc[VMIN] = 0;
+    tcsetattr( STDIN_FILENO, TCSANOW, &newt);
+
+    //USE fctl to set NDELAY?  Check delay value first?https://www.cmrr.umn.edu/~strupp/serial.html#CONTENTS
+
+    char c;
+
+    for(;;)
     {
-        if (strstr(input_buffer, "quit"))
+        // if available, get char from stdin
+        //     send char to obd2_port
+        if ((c=getchar()) > 0)
         {
-            stop_serial_handler_thd(input_tid);
-        //    close (serial_port);
-            exit(-1);
+            putchar(c);
+            serial_put(obd2_port, c);
         }
-
-        // CHANGE \n to \r ??
-        fwrite (input_buffer, num_read, 1, serial_port_fp);
-        fputc (0x0d, serial_port_fp);fflush(serial_port_fp);
-//        write (stdin, input_buffer, strlen(input_buffer));
-//        write (serial_port, input_buffer, strlen(input_buffer));
+printf (".");
+        // if available, get char from obd2_port
+        //     print to console (adding lf?)
+        while (serial_available(obd2_port))
+        {
+            printf ("%c", serial_get(obd2_port));
+        }
     }
+    
+    tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
 
     return 0;
 }  //End Main
-

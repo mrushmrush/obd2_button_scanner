@@ -83,15 +83,23 @@ extern "C" {
     //   adds character to a set.
     //   if set not empty, receive thread looks for delim char received and sets flag
     //   Better, receive thread sends signal or calls callback
+    int serial_add_delimiter (char delimiter);
 
     // Clear delimiter character set
+    int serial_clear_delimiters (void);
 
     // Affirm delimiter character received
     //  0=delim not received
     //  x=delim received.  'x' is size of buffer required to fetch(including terminating null)
     // -1=buffer full
+    int serial_delim_received (void);
 
     // Get next delimited buffer as string
+    int serial_fetch_delimited_string (char **buffer);
+
+    // Host sets callback func to be called in the event
+    // a delimiter char is received.
+    int serial_set_delim_callback (void (*cb_fp)(void));
     
     // TODO: END
 
