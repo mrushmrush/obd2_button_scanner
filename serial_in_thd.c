@@ -108,13 +108,27 @@ static void *serial_handler_thread(void *data)
     int num_chars;
     size_t input_buffer_size = 0;
 
-
+char ch;
 
     while (!stop_thread_flag)
     {
-        getline (&input_buffer, &input_buffer_size, serial_port_fp);
-        printf ("%s", input_buffer);
-//        fputs (input_buffer, obd_file_out);
+        //getline (&input_buffer, &input_buffer_size, serial_port_fp);
+//        num_chars = getdelim (&input_buffer, &input_buffer_size, 0x0D, serial_port_fp);
+        ch = fgetc (serial_port_fp);
+        if (ferror(serial_port_fp))
+        {
+            //perror ("getdelim err:");
+            /* handle error */
+        }
+        if (feof (serial_port_fp))
+        {
+            //printf ("EOF\n"); 
+        }
+//        printf ("Received: %d %s", num_chars, input_buffer);
+        printf ("%c", ch);
+        //        fputs (input_buffer, obd_file_out);
+        clearerr(serial_port_fp);
+       // input_buffer[0] = 0x00;
     } //end while
     // Do whatever work remains before exiting
     // ...

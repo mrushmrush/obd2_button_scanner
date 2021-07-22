@@ -1,3 +1,22 @@
+//****************************************************************************
+//  
+//  Copyright (c) 2019  Lede Engineering, Inc.
+//  All Rights Reserved
+//  No portions of this material may be reproduced in any form without the
+//  written permission of:
+//          Lede Engineering, Inc.
+//          8007 Sleepy Lagoon Way
+//          Flowery Branch, GA 30542
+//  All information contained in this document is Lede Engineering
+//  company private, proprietary, and trade secret.
+//  
+//  
+//****************************************************************************
+//  doxygen header
+//  
+//  Filename:       uart.c
+//  Author:         Mark Rush
+//  Creation Date:  Jul 21, 2021
 
 #include "uart.h"
 
@@ -7,7 +26,6 @@
 #include <fcntl.h>
 #include <stdio.h>
 #include <stdlib.h>
-#include <syslog.h>
 
 #include <unistd.h>
 #include <pthread.h>
@@ -15,30 +33,31 @@
 #include <poll.h>
 #include <errno.h>
 
-#include "serial_handler_thd.h"
-
-/**
- * @struct Serial device structure.
- * Encapsulates a serial connection.
- */
+//*******************************************
+// @struct Serial device structure.
+// Encapsulates a serial connection.
+//*******************************************
 struct serial_s {
-
-    int fd;                  //>! Connection file descriptor.
-    int state;               //>! Signifies connection state.
-    int running;             //>! Signifies thread state.
-
-    char rxbuff[BUFF_SIZE];  //>! Buffer for RX data.
-    int start, end;          //>! Pointers to start and end of buffer.
-
-    pthread_t rx_thread;     //>! Listening thread.
+    int fd;                  // Connection file descriptor.
+    int connection_state;    // Signifies connection state.
+    int running;             // Signifies thread state.
+    char rxbuff[BUFF_SIZE];  // Buffer for RX data.
+    int start, end;          // Pointers to start and end of buffer.
+    pthread_t rx_thread;     // Listening thread.
 };
 
-// ---------------        Internal Functions        ---------------
+
+
+//*******************************************
+//*******************************************
+//     Internal Functions 
+//*******************************************
+//*******************************************
 
 static int serial_resolve_baud(int baud);
 
 /**
- * Recieve data.
+ * Receive data.
  * Retrieves data from the serial device.
  * @param s - serial structure.
  * @param data - pointer to a buffer to read data into.
@@ -87,16 +106,16 @@ static int buffer_put(serial_t* s, char c)
 {
 
     //if there is space in the buffer
-    if ( s->end != ((s->start + BUFF_SIZE - 1) % BUFF_SIZE)) {
-
+    if ( s->end != ((s->start + BUFF_SIZE - 1) % BUFF_SIZE))
+    {
         s->rxbuff[s->end] = c;
         s->end ++;
         s->end = s->end % BUFF_SIZE;
         //printf("Put: %x start: %d, end: %d\r\n", c, s->start, s->end);
-//        syslog(LOG_DEBUG, "Put: %x start: %d, end: %d\r\n", c, s->start, s->end);
         return 0;        //No error
-    } else {
-
+    }
+    else
+    {
         //buffer is full, this is a bad state
         return -1;        //Report error
     }
@@ -114,14 +133,15 @@ static char buffer_get(serial_t* s)
 
     char c = (char)0;
     //if there is data to process
-    if (s->end != s->start) {
-
+    if (s->end != s->start)
+    {
         c = (s->rxbuff[s->start]);
         s->start ++;
         //wrap around
         s->start = s->start % BUFF_SIZE;
-//        syslog(LOG_DEBUG, "Get: %x start: %d, end: %d\r\n", c, s->start, s->end);
-    } else {
+    }
+    else
+    {
     }
     //printf("Get: %x start: %d, end: %d\r\n", c, s->start, s->end);
     return c;
@@ -134,7 +154,11 @@ static int buffer_available(serial_t* s)
     return (s->end - s->start + BUFF_SIZE) % BUFF_SIZE;
 }
 
-// ---------------        External Functions        ---------------
+//*******************************************
+//*******************************************
+//     External Functions 
+//*******************************************
+//*******************************************
 
 //Create serial object.
 serial_t* serial_create()
@@ -165,8 +189,8 @@ int serial_connect(serial_t* s, char device[], int baud)
 
     // Resolve baud.
     int speed = serial_resolve_baud(baud);
-    if (speed < 0) {
-
+    if (speed < 0)
+    {
         printf("Error: Baud rate not recognized.\r\n");
         return -1;
     }
@@ -174,8 +198,8 @@ int serial_connect(serial_t* s, char device[], int baud)
     //Open device.
     s->fd = open(device, O_RDWR | O_NOCTTY);
     //Catch file open error.
-    if (s->fd < 0) {
-
+    if (s->fd < 0)
+    {
         perror(device);
         return -2;
     }
@@ -201,14 +225,14 @@ oldtio.c_cc[VTIME] = 0;     /* block untill a timer expires (n * 100 mSec.) */
     //Start listener thread.
     int res = serial_start(s);
     //Catch error.
-    if (res < 0) {
-
+    if (res < 0)
+    {
         printf("Error: serial thread could not be spawned\r\n");
         return -3;
     }
 
     //Indicate connection was successful.
-    s->state = 1;
+    s->connection_state = 1;
     return 0;
 }
 
@@ -261,8 +285,8 @@ void serial_clear(serial_t* s)
 {
 
     //Clear the buffer.
-    while (buffer_available(s)) {
-
+    while (buffer_available(s))
+    {
         buffer_get(s);
     }
 }
@@ -292,7 +316,8 @@ static int serial_resolve_baud(int baud)
 
     int speed;
     // Switch common baud rates to temios constants.
-    switch (baud) {
+    switch (baud)
+    {
 
         case 9600:
             speed = B9600;
@@ -325,21 +350,22 @@ static int serial_start(serial_t* s)
 {
 
     //Only start if it is not currently running.
-    if (s->running != 1) {
-
+    if (s->running != 1)
+    {
         //Set running.
         s->running = 1;
         //Spawn thread.
         int res;
         res = pthread_create(&s->rx_thread, NULL, serial_data_listener, (void*) s);
-        if (res != 0) {
-
+        if (res != 0)
+        {
             return -2;
         }
         //Return result.
         return 0;
-    } else {
-
+    }
+    else
+    {
         return -1;
     }
 }
@@ -356,7 +382,8 @@ static void serial_rx_callback(serial_t* s, char data[], int length)
     //Put data into buffer.
     int i;
     //Put data into buffer.
-    for (i = 0; i < length; i++) {
+    for (i = 0; i < length; i++)
+    {
         buffer_put(s, data[i]);
     }
 
@@ -382,26 +409,23 @@ static void *serial_data_listener(void *param)
     //Run until ended.
     while (serial->running != 0)
     {
+        res = poll(&ufds, 1, POLL_TIMEOUT); //Poll socket for data.
 
-        //Poll socket for data.
-        res = poll(&ufds, 1, POLL_TIMEOUT);
-        //If data was received.
-        if (res > 0)
+        if (res > 0) //If data was received.
         {
             //Fetch the data.
             int count = serial_receive(serial, buff, BUFF_SIZE - 1);
             //If data was received.
-            if (count > 0) {
-
+            if (count > 0)
+            {
                 // Call the serial callback.
                 serial_rx_callback(serial, (char *)buff, count);
-//                syslog (LOG_DEBUG, "RXD CHARS");
-                received_char();
-            } else if (count < 0) {
                 //If an error occured.
+            }
+            else if (count < 0)
+            {
                 //Inform user and exit thread.
                 //printf("Error: Serial disconnect\r\n");
-                syslog (LOG_DEBUG, "SERIAL LISTENER ERROR: Serial Disconnect");
                 err = 1;
                 break;
             }
@@ -412,7 +436,7 @@ static void *serial_data_listener(void *param)
 
             //Inform user and exit thread.
             //printf("Error: Polling error in serial thread");
-            syslog (LOG_DEBUG, "SERIAL LISTENER POLL() ERROR");
+            //syslog (LOG_DEBUG, "SERIAL LISTENER POLL() ERROR");
             err = 1;
             break;
         }
@@ -421,18 +445,18 @@ static void *serial_data_listener(void *param)
             //TODO: MDR- Timed out.  Interpret this as an END_OF_MESSAGE event and
             //set poll-timeout to -1 to block on start of next message
             // send alert to main HOW???
-            syslog (LOG_DEBUG, "SERIAL LISTENER TIMEDOUT");
+            //syslog (LOG_DEBUG, "SERIAL LISTENER TIMEDOUT");
         }
         //Otherwise, keep going around.
     }
     
     if (serial->running == 0)
     {
-        syslog (LOG_DEBUG, "SERIAL PORT STOPPED");
+        //syslog (LOG_DEBUG, "SERIAL PORT STOPPED");
     }
     //If there was an error, close socket.
-    if (err) {
-
+    if (err)
+    {
         serial_close(serial);
         //raise(SIGLOST);
     }
@@ -442,7 +466,7 @@ static void *serial_data_listener(void *param)
     return NULL;
 }
 
-void flush_buffer(void)
+void flush_buffer(serial_t* s)
 {
     s->start = 0;
     s->end = 0;

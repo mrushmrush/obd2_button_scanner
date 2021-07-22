@@ -63,7 +63,7 @@
 //********************** Global extern instances ************************************
     struct termios tty;
     int serial_port; 
-    FILE * serial_port_fp; 
+    FILE *serial_port_fp; 
 
 //****************** Local Function Prototypes *******************************
 
@@ -114,7 +114,7 @@ int main (int argc, char *argv[])
     // tty.c_oflag &= ~OXTABS; // Prevent conversion of tabs to spaces (NOT PRESENT ON LINUX)
     // tty.c_oflag &= ~ONOEOT; // Prevent removal of C-d chars (0x004) in output (NOT PRESENT ON LINUX)
 
-    tty.c_cc[VTIME] = 10;    // Wait for up to 1s (10 deciseconds), returning as soon as any data is received.
+    tty.c_cc[VTIME] = 50;    // Wait for up to 5s (50 deciseconds), returning as soon as any data is received.
     tty.c_cc[VMIN] = 0;
 
     // Set in/out baud rate to be 9600
@@ -143,18 +143,38 @@ int main (int argc, char *argv[])
     // Send setup messages
     printf ("%s", input_buffer);
 
-    fputs ("atl1\n", serial_stream); fflush(serial_stream);
-    getline (&input_buffer, &input_buffer_size, serial_stream);
+    fputs ("atl1\n", serial_port_fp); fflush(serial_port_fp);
+    getline (&input_buffer, &input_buffer_size, serial_port_fp);
     fwrite (obd_file_out, input_buffer, 
     printf ("%s", input_buffer);
 
-    fputs ("atal\n", serial_stream); fflush(serial_stream);
-    getline (&input_buffer, &input_buffer_size, serial_stream);
+    fputs ("atal\n", serial_port_fp); fflush(serial_port_fp);
+    getline (&input_buffer, &input_buffer_size, serial_port_fp);
     printf ("%s", input_buffer);
 
-    fputs ("atma\n", serial_stream); fflush(serial_stream);
+    fputs ("atma\n", serial_port_fp); fflush(serial_port_fp);
 #endif
     
+    fputs ("atl0\n", serial_port_fp); fflush(serial_port_fp); //linefeeds off
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+    fputs ("ath0\n", serial_port_fp); fflush(serial_port_fp); //headers off
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+    fputs ("ats1\n", serial_port_fp); fflush(serial_port_fp); //print spaces
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+    fputs ("atal\n", serial_port_fp); fflush(serial_port_fp); // allow long messages
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+    fputs ("ate0\n", serial_port_fp); fflush(serial_port_fp); //echo off
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+    fputs ("atsp0\n", serial_port_fp); fflush(serial_port_fp); //automatic protocol search
+    sleep(3);
+    //insert wait for correct response.  Add trigger to continue?
+   // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //use to mask responses
+
     char *input_buffer = NULL;
     size_t size_of_buffer = 0;
     int num_read;
@@ -168,7 +188,9 @@ int main (int argc, char *argv[])
             exit(-1);
         }
 
-        fputs(input_buffer, serial_port_fp);fflush(serial_port_fp);
+        // CHANGE \n to \r ??
+        fwrite (input_buffer, num_read, 1, serial_port_fp);
+        fputc (0x0d, serial_port_fp);fflush(serial_port_fp);
 //        write (stdin, input_buffer, strlen(input_buffer));
 //        write (serial_port, input_buffer, strlen(input_buffer));
     }

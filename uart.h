@@ -1,3 +1,22 @@
+//****************************************************************************
+//  
+//  Copyright (c) 2019  Lede Engineering, Inc.
+//  All Rights Reserved
+//  No portions of this material may be reproduced in any form without the
+//  written permission of:
+//          Lede Engineering, Inc.
+//          8007 Sleepy Lagoon Way
+//          Flowery Branch, GA 30542
+//  All information contained in this document is Lede Engineering
+//  company private, proprietary, and trade secret.
+//  
+//  
+//****************************************************************************
+//  doxygen header
+//  
+//  Filename:       uart.h
+//  Author:         Mark Rush
+//  Creation Date:  Jul 21, 2021
 
 #ifndef SERIAL_H
 #define SERIAL_H
@@ -59,6 +78,23 @@ extern "C" {
      */
     int serial_available(serial_t* s);
 
+    // TODO: BEGIN
+    // Initialize delimiter character set
+    //   adds character to a set.
+    //   if set not empty, receive thread looks for delim char received and sets flag
+    //   Better, receive thread sends signal or calls callback
+
+    // Clear delimiter character set
+
+    // Affirm delimiter character received
+    //  0=delim not received
+    //  x=delim received.  'x' is size of buffer required to fetch(including terminating null)
+    // -1=buffer full
+
+    // Get next delimited buffer as string
+    
+    // TODO: END
+
     /**
      * Fetch one char from the serial buffer.
      * @param s - serial structure.
@@ -89,7 +125,7 @@ extern "C" {
     int serial_close(serial_t* s);
 
 
-    void flush_buffer();
+    void flush_buffer(serial_t* s);
 
 #ifdef __cplusplus
 }
