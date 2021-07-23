@@ -54,12 +54,21 @@
 
 //********************** Local Constants *************************************
 
+//main-loop status flag states
+#define STOP_MAINLOOP               0x00000001
+#define SEND_STRING2OBD2            0x00000002
+#define DELIMITER_FOUND             0x00000004
 
 //********************** Local Typedefs **************************************
 #define SERIAL_PORT_FQN "/dev/ttyUSB0"
 
 
 //********************** Local Variables *************************************
+
+//signalling for main loop
+static pthread_cond_t  mainloop_state;
+static pthread_mutex_t es_mutex = PTHREAD_MUTEX_INITIALIZER;
+static unsigned int    mainloop_state_flags = 0;
 
 //********************** Global extern instances ************************************
 
@@ -97,90 +106,131 @@ int main (int argc, char *argv[])
 
 
 
-#if 0
-    strcpy (output_buffer, "atsp0\n");
-    write (serial_port, output_buffer,strlen(output_buffer));
-    num_chars = read_elm327(serial_port, input_buffer, 256);
-    fwrite (input_buffer, 1, num_chars, obd_file_out);
-
-
     // Send setup messages
-    printf ("%s", input_buffer);
-
-    fputs ("atl1\n", serial_port_fp); fflush(serial_port_fp);
-    getline (&input_buffer, &input_buffer_size, serial_port_fp);
-    fwrite (obd_file_out, input_buffer, 
-    printf ("%s", input_buffer);
-
-    fputs ("atal\n", serial_port_fp); fflush(serial_port_fp);
-    getline (&input_buffer, &input_buffer_size, serial_port_fp);
-    printf ("%s", input_buffer);
-
-    fputs ("atma\n", serial_port_fp); fflush(serial_port_fp);
-#endif
-    
-    serial_send (obd2_port, "atl0\n", 5); //linefeeds off
-//    sleep(3);
+    //    serial_send (obd2_port, "atl0\n", 5); //linefeeds off
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
     // add '>' as delimiter?????
 
-    serial_send (obd2_port, "ath0\n", 5); //headers off
-//    sleep(3);
+    //    serial_send (obd2_port, "ath0\n", 5); //headers off
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
 
-    serial_send (obd2_port, "ats1\n", 5); //print spaces   <-- //TODO: Look into removing spaces to speed up
-//    sleep(3);
+    //    serial_send (obd2_port, "ats1\n", 5); //print spaces   <-- //TODO: Look into removing spaces to speed up
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
 
-    serial_send (obd2_port, "atal\n", 5); // allow long messages
-//    sleep(3);
+    //    serial_send (obd2_port, "atal\n", 5); // allow long messages
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
 
-    serial_send (obd2_port, "ate0\n", 5); //echo off
-//    sleep(3);
+    //    serial_send (obd2_port, "ate0\n", 5); //echo off
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
 
-    serial_send (obd2_port, "atsp0\n", 6); //automatic protocol search
-//    sleep(3);
+    //    serial_send (obd2_port, "atsp0\n", 6); //automatic protocol search
+    //    sleep(3);
     //insert wait for correct response.  Add trigger to continue?
 
     //TODO: use to mask responses
-   // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //
+    // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //
+    //fputs ("atma\n", serial_port_fp); fflush(serial_port_fp);
 
 
+    //**************************************************************************
+    // Begin main loop
+    //**************************************************************************
+    struct timespec timeout;
+    pthread_condattr_t pt_attr;  //attribs to set clock in cond_wait
+    int rval;
 
-    //// SET UP STDIN FOR OUR USE
-    static struct termios oldt, newt;
-    tcgetattr( STDIN_FILENO, &oldt);
-    newt = oldt;
-    newt.c_lflag &= ~(ICANON);
-    newt.c_cc[VTIME] = 1;
-    newt.c_cc[VMIN] = 0;
-    tcsetattr( STDIN_FILENO, TCSANOW, &newt);
+    //initialize mainloop syncronization variables
+    //(Note: mutex must be locked when we enter the pthread_cond_timedwait)
+    pthread_mutex_lock (&es_mutex);
+    pthread_condattr_init(&pt_attr);
+    pthread_condattr_setclock(&pt_attr, CLOCK_MONOTONIC);
+    pthread_cond_init (&mainloop_state, &pt_attr);
+    clock_gettime (CLOCK_MONOTONIC, &timeout);
+    //timeout.tv_sec += ;
+    timeout.tv_nsec += 0;
 
-    //USE fctl to set NDELAY?  Check delay value first?https://www.cmrr.umn.edu/~strupp/serial.html#CONTENTS
+    mainloop_state_flags = mainloop_state_flags; //TODO: Until supervisor mainloop has to handle events
 
-    char c;
-
-    for(;;)
+    printf ("Entering main loop");fflush(stdout);
+    //Main Loop
+    int run = 1; //TODO: cleanup
+    while (run)
     {
-        // if available, get char from stdin
-        //     send char to obd2_port
-        if ((c=getchar()) > 0)
+        //wait here for event or for timeout
+        rval = pthread_cond_timedwait (&mainloop_state, &es_mutex, &timeout);
+        switch (rval)
         {
-            putchar(c);
-            serial_put(obd2_port, c);
-        }
-printf (".");
-        // if available, get char from obd2_port
-        //     print to console (adding lf?)
-        while (serial_available(obd2_port))
-        {
-            printf ("%c", serial_get(obd2_port));
+            case 0:  //awakened by signal flag
+                //
+                if (STOP_MAINLOOP & mainloop_state_flags)
+                {
+                    printf ("STOPPING MAINLOOP");fflush(stdout);
+                    run = 0;
+                    mainloop_state_flags &= ~STOP_MAINLOOP;
+                }
+
+                if (SEND_STRING2OBD2 & mainloop_state_flags)
+                {
+                    mainloop_state_flags &= ~SEND_STRING2OBD2;
+                }
+
+                if (DELIMITER_FOUND & mainloop_state_flags)
+                {
+                    mainloop_state_flags &= ~DELIMITER_FOUND;
+                }
+                break;
+
+            case ETIMEDOUT:
+                {
+                //XXX: Manual method of stopping the system.  Simply 'touch'
+                // 'stop' in root directory.
+                struct stat   buffer; 
+                static int r;
+                if (0 == stat ("/stop", &buffer))
+                {
+                    printf ("Manual 'Stop' file found");fflush(stdout);
+                    unlink ("/stop");
+                    run = 0;
+                }
+                else
+                {
+                    while (serial_available(obd2_port))
+                    {
+                        printf ("%c", serial_get(obd2_port));
+                    }
+
+                    //calculate next timeout (cond_timedwait accepts timespec)
+                    clock_gettime (CLOCK_MONOTONIC, &timeout);
+                    //timeout.tv_sec += timeout;
+                }
+                }
+
+                break;
+
+            default:
+                printf ("External Signal detected in main loop");fflush(stdout);
+                break;
         }
     }
-    
-    tcsetattr( STDIN_FILENO, TCSANOW, &oldt);
 
     return 0;
 }  //End Main
+
+void delimiter_notify(char delim)
+{
+    //switch on delimiter?
+    pthread_mutex_lock (&es_mutex);
+    mainloop_state_flags |= DELIMITER_FOUND;
+    pthread_mutex_unlock (&es_mutex);
+    pthread_cond_signal (&mainloop_state);
+}
+
+void send_string2obd2 (char *buffer)
+{
+
+}
