@@ -199,7 +199,8 @@ void serial_destroy(serial_t* s)
 int serial_connect(serial_t* s, char device[], int baud)
 {
 
-    struct termios tty;
+    struct termios oldtio;
+    //struct termios tty;
 
     // Resolve baud.
     int speed = serial_resolve_baud(baud);
@@ -219,7 +220,6 @@ int serial_connect(serial_t* s, char device[], int baud)
     }
 
 
-#if 0
     //Retrieve settings.
     tcgetattr(s->fd, &oldtio);
     //Set baud rate.
@@ -238,8 +238,8 @@ oldtio.c_cc[VTIME] = 0;     /* block untill a timer expires (n * 100 mSec.) */
 //oldtio.
     //Apply settings.
     tcsetattr(s->fd, TCSANOW, &oldtio);
-#endif
 
+#if 0
     ////////////
     // Set up serial port parameters
     // Read in existing settings, and handle any error
@@ -281,6 +281,7 @@ oldtio.c_cc[VTIME] = 0;     /* block untill a timer expires (n * 100 mSec.) */
         return -1;
     }
     ///////
+#endif
 
     //Start listener thread.
     int res = serial_start(s);

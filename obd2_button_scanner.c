@@ -48,7 +48,7 @@
 #include <syslog.h>
 #include <termios.h>
 
-#include "serial_in_thd.h"
+#include "console_in_thd.h"
 #include "uart.h"
 
 
@@ -69,6 +69,8 @@
 static pthread_cond_t  mainloop_state;
 static pthread_mutex_t es_mutex = PTHREAD_MUTEX_INITIALIZER;
 static unsigned int    mainloop_state_flags = 0;
+
+static char *console_input_buffer;
 
 //********************** Global extern instances ************************************
 
@@ -103,8 +105,7 @@ int main (int argc, char *argv[])
         printf ("Error connecting to obd2_port\n");
         exit -1;
     }
-
-
+    start_console_handler_thread (NULL);
 
     // Send setup messages
     //    serial_send (obd2_port, "atl0\n", 5); //linefeeds off
@@ -156,8 +157,8 @@ int main (int argc, char *argv[])
 
     mainloop_state_flags = mainloop_state_flags; //TODO: Until supervisor mainloop has to handle events
 
-    printf ("Entering main loop");fflush(stdout);
     //Main Loop
+    printf ("Entering main loop");fflush(stdout);
     int run = 1; //TODO: cleanup
     while (run)
     {
@@ -176,6 +177,19 @@ int main (int argc, char *argv[])
 
                 if (SEND_STRING2OBD2 & mainloop_state_flags)
                 {
+                    int i = 0;
+                    struct timespec pause;
+                    pause.tv_nsec = 30000000;
+                    while (console_input_buffer[i])
+                    {
+                        serial_put (obd2_port, console_input_buffer[i]);
+                        printf (".%c",console_input_buffer[i]);fflush(stdout);
+                        i++;
+                        nanosleep (&pause, NULL);
+                    }
+                    serial_put (obd2_port, '\r');
+                    serial_put (obd2_port, '\n');
+                    free (console_input_buffer);
                     mainloop_state_flags &= ~SEND_STRING2OBD2;
                 }
 
@@ -187,27 +201,32 @@ int main (int argc, char *argv[])
 
             case ETIMEDOUT:
                 {
-                //XXX: Manual method of stopping the system.  Simply 'touch'
-                // 'stop' in root directory.
-                struct stat   buffer; 
-                static int r;
-                if (0 == stat ("/stop", &buffer))
-                {
-                    printf ("Manual 'Stop' file found");fflush(stdout);
-                    unlink ("/stop");
-                    run = 0;
-                }
-                else
-                {
-                    while (serial_available(obd2_port))
+                    //XXX: Manual method of stopping the system.  Simply 'touch'
+                    // 'stop' in root directory.
+                    struct stat   buffer; 
+                    static int r;
+                    if (0 == stat ("/stop", &buffer))
                     {
-                        printf ("%c", serial_get(obd2_port));
+                        printf ("Manual 'Stop' file found");fflush(stdout);
+                        unlink ("/stop");
+                        run = 0;
                     }
+                    else
+                    {
+                        while (serial_available(obd2_port))
+                        {
+                            printf ("%c", serial_get(obd2_port));
+                        }
 
-                    //calculate next timeout (cond_timedwait accepts timespec)
-                    clock_gettime (CLOCK_MONOTONIC, &timeout);
-                    //timeout.tv_sec += timeout;
-                }
+                        //calculate next timeout (cond_timedwait accepts timespec)
+                        clock_gettime (CLOCK_MONOTONIC, &timeout);
+                        timeout.tv_nsec += 1000000; //1ms
+                        if (timeout.tv_nsec > 999999999)
+                        {
+                            timeout.tv_sec++;
+                            timeout.tv_nsec -= 1000000000; 
+                        }
+                    }
                 }
 
                 break;
@@ -230,7 +249,11 @@ void delimiter_notify(char delim)
     pthread_cond_signal (&mainloop_state);
 }
 
-void send_string2obd2 (char *buffer)
+void send_string2obd2 (char **buffer)
 {
-
+    console_input_buffer = strdup (*buffer);
+    pthread_mutex_lock (&es_mutex);
+    mainloop_state_flags |= SEND_STRING2OBD2;
+    pthread_mutex_unlock (&es_mutex);
+    pthread_cond_signal (&mainloop_state);
 }
