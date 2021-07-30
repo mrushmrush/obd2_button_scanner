@@ -72,6 +72,19 @@ static unsigned int    mainloop_state_flags = 0;
 
 static char *console_input_buffer;
 
+// TODO: Collection of all monitored vehicle variables
+static struct vehicle_struct {
+    int speed;  //mph
+    int gear;
+
+    // Registered APIs TODO: Separate out to other struct
+    void (*send_string2obd2_fp)(char **buffer); // pointer to sendstring function
+
+} vehicle;
+
+int log_fd = 0;
+bool logging_on = false;
+bool waiting_for_delimiter = false;
 //********************** Global extern instances ************************************
 
 //****************** Local Function Prototypes *******************************
@@ -155,10 +168,10 @@ int main (int argc, char *argv[])
     //timeout.tv_sec += ;
     timeout.tv_nsec += 0;
 
-    mainloop_state_flags = mainloop_state_flags; //TODO: Until supervisor mainloop has to handle events
+    mainloop_state_flags = mainloop_state_flags; //Keep compiler happy
 
     //Main Loop
-    printf ("Entering main loop");fflush(stdout);
+    printf ("Entering main loop\n");fflush(stdout);
     int run = 1; //TODO: cleanup
     while (run)
     {
@@ -177,18 +190,49 @@ int main (int argc, char *argv[])
 
                 if (SEND_STRING2OBD2 & mainloop_state_flags)
                 {
-                    int i = 0;
-                    struct timespec pause;
-                    pause.tv_nsec = 30000000;
-                    while (console_input_buffer[i])
+                    printf ("ML: Send2OBD2\n");fflush(stdout); //TESTTESTTEST
+                    if (console_input_buffer[0] == '*')
                     {
-                        serial_put (obd2_port, console_input_buffer[i]);
-                        printf (".%c",console_input_buffer[i]);fflush(stdout);
-                        i++;
-                        nanosleep (&pause, NULL);
+                        //Scanner command
+                        switch (console_input_buffer[1])
+                        {
+                            case 'l':
+                                if (console_input_buffer[2] == '1')
+                                {
+                                    //Logging on
+                                    log_fd = open ("./log_file", O_RDWR);
+                                    logging_on = true;
+                                }
+                                else
+                                {
+                                    //Logging off
+                                }
+                                break;
+                            case 'q':
+                                //if logging is on, close files
+                                run = 0;
+                                break;
+                            default:
+                                break;
+                        }
                     }
-                    serial_put (obd2_port, '\r');
-                    serial_put (obd2_port, '\n');
+                    else
+                    {
+                        printf("Send str\n");fflush(stdout);
+                        int i = 0;
+                        struct timespec pause;
+                        pause.tv_nsec = 30000000;
+                        while (console_input_buffer[i])
+                        {
+                            serial_put (obd2_port, console_input_buffer[i]);
+                            //printf ("0x%x\n", console_input_buffer[i]);fflush(stdout);
+                            i++;
+                            nanosleep (&pause, NULL); //TODO: Try without delay, now that input is working...
+                        }
+                        serial_put (obd2_port, '\r');
+                        //  serial_put (obd2_port, '\n');
+                    }
+
                     free (console_input_buffer);
                     mainloop_state_flags &= ~SEND_STRING2OBD2;
                 }
@@ -201,6 +245,14 @@ int main (int argc, char *argv[])
 
             case ETIMEDOUT:
                 {
+#if 1
+                    static int counter=0;
+                    char chars[4] = {
+                        '-', '/', '|', '\\'
+                    };
+                    printf ("\r%c", chars[counter++]); fflush(stdout);
+                    if (counter > 3) counter = 0;
+#endif
                     //XXX: Manual method of stopping the system.  Simply 'touch'
                     // 'stop' in root directory.
                     struct stat   buffer; 
@@ -213,18 +265,28 @@ int main (int argc, char *argv[])
                     }
                     else
                     {
-                        while (serial_available(obd2_port))
+                        if (!waiting_for_delimiter)
                         {
-                            printf ("%c", serial_get(obd2_port));
-                        }
+                            char ch;
+                            while (serial_available(obd2_port))
+                            {
+                                ch = serial_get(obd2_port);
+                                printf ("%c", ch);fflush(stdout);
+                                if (logging_on)
+                                {
+                                    write (log_fd, &ch, 1);
+                                }
+                                // TODO: If logging is on, write to file
+                            }
 
-                        //calculate next timeout (cond_timedwait accepts timespec)
-                        clock_gettime (CLOCK_MONOTONIC, &timeout);
-                        timeout.tv_nsec += 1000000; //1ms
-                        if (timeout.tv_nsec > 999999999)
-                        {
-                            timeout.tv_sec++;
-                            timeout.tv_nsec -= 1000000000; 
+                            //calculate next timeout (cond_timedwait accepts timespec)
+                            clock_gettime (CLOCK_MONOTONIC, &timeout);
+                            timeout.tv_nsec += 100000000; //1ms
+                            if (timeout.tv_nsec > 999999999)
+                            {
+                                timeout.tv_sec++;
+                                timeout.tv_nsec -= 1000000000; 
+                            }
                         }
                     }
                 }
@@ -236,6 +298,11 @@ int main (int argc, char *argv[])
                 break;
         }
     }
+
+    // TODO: Close log files
+    if (log_fd) close(log_fd);
+    // TODO: Stop threads
+    // TODO: Close serial port
 
     return 0;
 }  //End Main
@@ -251,6 +318,7 @@ void delimiter_notify(char delim)
 
 void send_string2obd2 (char **buffer)
 {
+    printf ("strlen=%zu\n", strlen(*buffer));
     console_input_buffer = strdup (*buffer);
     pthread_mutex_lock (&es_mutex);
     mainloop_state_flags |= SEND_STRING2OBD2;
