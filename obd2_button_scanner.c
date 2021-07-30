@@ -200,12 +200,22 @@ int main (int argc, char *argv[])
                                 if (console_input_buffer[2] == '1')
                                 {
                                     //Logging on
-                                    log_fd = open ("./log_file", O_RDWR);
-                                    logging_on = true;
+                                    log_fd = open ("./log_file", O_CREAT | O_RDWR, S_IRWXU | S_IRWXG | S_IRWXO);
+                                    if (-1 == log_fd)
+                                    {
+                                        perror("Opening log file");
+                                    }
+                                    else
+                                    {
+                                        logging_on = true;
+                                    }
                                 }
                                 else
                                 {
                                     //Logging off
+                                    logging_on = false;
+                                    if (log_fd)
+                                        close (log_fd);
                                 }
                                 break;
                             case 'q':
@@ -221,15 +231,33 @@ int main (int argc, char *argv[])
                         printf("Send str\n");fflush(stdout);
                         int i = 0;
                         struct timespec pause;
+                        pause.tv_sec = 0;
                         pause.tv_nsec = 30000000;
+
+                        if (logging_on)
+                        {
+                            char ch[] = {'-', '>'};
+                            write (log_fd, &ch, 2);
+                        }
+
                         while (console_input_buffer[i])
                         {
                             serial_put (obd2_port, console_input_buffer[i]);
+                        if (logging_on)
+                        {
+                            write (log_fd, &console_input_buffer[i], 1);
+                        }
                             //printf ("0x%x\n", console_input_buffer[i]);fflush(stdout);
                             i++;
                             nanosleep (&pause, NULL); //TODO: Try without delay, now that input is working...
                         }
                         serial_put (obd2_port, '\r');
+
+                        if (logging_on)
+                        {
+                            char ch[] = {'\r', '<', '-'};
+                            write (log_fd, &ch, 3);
+                        }
                         //  serial_put (obd2_port, '\n');
                     }
 
@@ -245,7 +273,7 @@ int main (int argc, char *argv[])
 
             case ETIMEDOUT:
                 {
-#if 1
+#if 0
                     static int counter=0;
                     char chars[4] = {
                         '-', '/', '|', '\\'
@@ -318,10 +346,15 @@ void delimiter_notify(char delim)
 
 void send_string2obd2 (char **buffer)
 {
-    printf ("strlen=%zu\n", strlen(*buffer));
-    console_input_buffer = strdup (*buffer);
-    pthread_mutex_lock (&es_mutex);
-    mainloop_state_flags |= SEND_STRING2OBD2;
-    pthread_mutex_unlock (&es_mutex);
-    pthread_cond_signal (&mainloop_state);
+    if ((console_input_buffer = strdup (*buffer)))
+    {
+        pthread_mutex_lock (&es_mutex);
+        mainloop_state_flags |= SEND_STRING2OBD2;
+        pthread_mutex_unlock (&es_mutex);
+        pthread_cond_signal (&mainloop_state);
+    }
+    else
+    {
+        printf ("ERROR: could not allocate space for obd2send\n");fflush(stdout);
+    }
 }
