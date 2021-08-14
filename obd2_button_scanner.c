@@ -84,6 +84,7 @@ static struct vehicle_struct {
 
 int log_fd = 0;
 bool logging_on = false;
+bool record = false;
 bool waiting_for_delimiter = false;
 //********************** Global extern instances ************************************
 
@@ -113,42 +114,55 @@ int main (int argc, char *argv[])
         exit -1;
     }
 
-    if (0 > serial_connect (obd2_port, SERIAL_PORT_FQN, 500000))
+    if (0 > serial_connect (obd2_port, SERIAL_PORT_FQN, 38400))
     {
         printf ("Error connecting to obd2_port\n");
         exit -1;
     }
-    start_console_handler_thread (NULL);
+
+//    serial_add_delimiter (obd2_port, '>');
 
     // Send setup messages
-    //    serial_send (obd2_port, "atl0\n", 5); //linefeeds off
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
-    // add '>' as delimiter?????
+        serial_send(obd2_port, "atz\r", 4);
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("0\r");
 
-    //    serial_send (obd2_port, "ath0\n", 5); //headers off
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
+        serial_send (obd2_port, "atl1\r", 5); //linefeeds off
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("1\r");
 
-    //    serial_send (obd2_port, "ats1\n", 5); //print spaces   <-- //TODO: Look into removing spaces to speed up
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
+        serial_send (obd2_port, "atsp0\r", 6); //automatic protocol search
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("2\r");
 
-    //    serial_send (obd2_port, "atal\n", 5); // allow long messages
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
+        serial_send (obd2_port, "ath0\r", 5); //headers off
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("3\r");
 
-    //    serial_send (obd2_port, "ate0\n", 5); //echo off
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
+        serial_send (obd2_port, "ats1\r", 5); //print spaces   <-- //TODO: Look into removing spaces to speed up
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("4\r");
 
-    //    serial_send (obd2_port, "atsp0\n", 6); //automatic protocol search
-    //    sleep(3);
-    //insert wait for correct response.  Add trigger to continue?
+        serial_send (obd2_port, "atal\r", 5); // allow long messages
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("5\r");
+
+        serial_send (obd2_port, "ate0\r", 5); //echo off
+        while ('>' != serial_blocking_get(obd2_port));
+    printf ("6\n");
 
     //TODO: use to mask responses
     // fputs ("atar\n", serial_port_fp); fflush(serial_port_fp); //
     //fputs ("atma\n", serial_port_fp); fflush(serial_port_fp);
+
+    /*
+       1) Find capabilities
+       2) 
+     */
+
+    start_console_handler_thread (NULL);
+
+
 
 
     //**************************************************************************
@@ -190,7 +204,6 @@ int main (int argc, char *argv[])
 
                 if (SEND_STRING2OBD2 & mainloop_state_flags)
                 {
-                    printf ("ML: Send2OBD2\n");fflush(stdout); //TESTTESTTEST
                     if (console_input_buffer[0] == '*')
                     {
                         //Scanner command
@@ -218,6 +231,10 @@ int main (int argc, char *argv[])
                                         close (log_fd);
                                 }
                                 break;
+                            case 'r':
+                                record = true;
+                                serial_put(obd2_port, '\r');
+                                break;
                             case 'q':
                                 //if logging is on, close files
                                 run = 0;
@@ -228,7 +245,7 @@ int main (int argc, char *argv[])
                     }
                     else
                     {
-                        printf("Send str\n");fflush(stdout);
+                        //printf("Send str: ");fflush(stdout);//TESTTESTTEST
                         int i = 0;
                         struct timespec pause;
                         pause.tv_sec = 0;
@@ -243,22 +260,24 @@ int main (int argc, char *argv[])
                         while (console_input_buffer[i])
                         {
                             serial_put (obd2_port, console_input_buffer[i]);
-                        if (logging_on)
-                        {
-                            write (log_fd, &console_input_buffer[i], 1);
-                        }
-                            //printf ("0x%x\n", console_input_buffer[i]);fflush(stdout);
+                            if (logging_on)
+                            {
+                                write (log_fd, &console_input_buffer[i], 1);
+                            }
+                            //printf ("0x%x ", console_input_buffer[i]);fflush(stdout);//TESTTESTTEST
+                            //printf ("%c", console_input_buffer[i]);fflush(stdout);//TESTTESTTEST
                             i++;
                             nanosleep (&pause, NULL); //TODO: Try without delay, now that input is working...
                         }
-                        serial_put (obd2_port, '\r');
+                        serial_put (obd2_port, 0x0d);
+                        printf ("\n");fflush(stdout);//TESTTESTTEST
 
                         if (logging_on)
                         {
                             char ch[] = {'\r', '<', '-'};
                             write (log_fd, &ch, 3);
                         }
-                        //  serial_put (obd2_port, '\n');
+                        //serial_put (obd2_port, '\n');fflush(stdout);//TESTTESTTEST
                     }
 
                     free (console_input_buffer);
@@ -273,16 +292,7 @@ int main (int argc, char *argv[])
 
             case ETIMEDOUT:
                 {
-#if 0
-                    static int counter=0;
-                    char chars[4] = {
-                        '-', '/', '|', '\\'
-                    };
-                    printf ("\r%c", chars[counter++]); fflush(stdout);
-                    if (counter > 3) counter = 0;
-#endif
-                    //XXX: Manual method of stopping the system.  Simply 'touch'
-                    // 'stop' in root directory.
+                    // Manual method of stopping the system.  Simply 'touch /stop' in other console.
                     struct stat   buffer; 
                     static int r;
                     if (0 == stat ("/stop", &buffer))
@@ -293,12 +303,47 @@ int main (int argc, char *argv[])
                     }
                     else
                     {
-                        if (!waiting_for_delimiter)
+                        //Normal operation
+                        if (waiting_for_delimiter)
                         {
+                            /*
                             char ch;
                             while (serial_available(obd2_port))
                             {
                                 ch = serial_get(obd2_port);
+
+                            // Wait for delimiter
+                            char *found = strchr (ch, s->delimiters);
+                            if (found)
+                            {
+                                char *buffer
+                            }
+                            */
+                        }
+                        else
+                        {
+                            // Not waiting for delimiter
+                            char ch;
+                            while (serial_available(obd2_port))
+                            {
+                                ch = serial_get(obd2_port);
+
+                                if (record && '>' == ch)
+                                {
+                                    static int count = 0;
+                                    if (0 == count)
+                                    serial_send(obd2_port, "0104\r", 5); //Engine Load
+                                    else if (1 == count)
+                                    serial_send(obd2_port, "0105\r", 5); //Coolant Temp
+                                    else if (2 == count)
+                                    serial_send(obd2_port, "010c\r", 5); //Engine speed
+                                    else if (3 == count)
+                                    serial_send(obd2_port, "010d\r", 5); //Vehicle speed
+
+                                    count++;
+                                    count &= 0x03;
+                                }
+
                                 printf ("%c", ch);fflush(stdout);
                                 if (logging_on)
                                 {
@@ -306,17 +351,17 @@ int main (int argc, char *argv[])
                                 }
                                 // TODO: If logging is on, write to file
                             }
-
-                            //calculate next timeout (cond_timedwait accepts timespec)
-                            clock_gettime (CLOCK_MONOTONIC, &timeout);
-                            timeout.tv_nsec += 100000000; //1ms
-                            if (timeout.tv_nsec > 999999999)
-                            {
-                                timeout.tv_sec++;
-                                timeout.tv_nsec -= 1000000000; 
-                            }
                         }
                     }
+                }
+
+                //calculate next timeout (cond_timedwait accepts timespec)
+                clock_gettime (CLOCK_MONOTONIC, &timeout);
+                timeout.tv_nsec += 100000000; //1ms
+                if (timeout.tv_nsec > 999999999)
+                {
+                    timeout.tv_sec++;
+                    timeout.tv_nsec -= 1000000000; 
                 }
 
                 break;
@@ -329,8 +374,11 @@ int main (int argc, char *argv[])
 
     // TODO: Close log files
     if (log_fd) close(log_fd);
+
     // TODO: Stop threads
+
     // TODO: Close serial port
+    serial_clear_delimiters (obd2_port);
 
     return 0;
 }  //End Main

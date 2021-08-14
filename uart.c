@@ -48,7 +48,7 @@ struct serial_s {
     void (*delim_callback_fp)(char delim); // pointer to callback function
                                            // to alert to delimiter being rxd.
     int  delimiters_count;   // how many delimiters we are tracking
-    char *delimiters;        // malloc'd buffer to store delimiters
+    char *delimiters;        // malloc'd buffer to store delimiters as null terminated string
 };
 
 
@@ -183,6 +183,22 @@ serial_t* serial_create()
     return s; //Return pointer.
 }
 
+void serial_add_delimiter (serial_t *s, char new_delimiter)
+{
+    size_t len = strlen(s->delimiters);
+    char *new_str = malloc (len + 2);
+    memcpy (new_str, s->delimiters, len);
+    new_str[len] = new_delimiter;
+    new_str[len+1] = '\0';
+    free (s->delimiters);
+    s->delimiters = new_str;
+}
+
+void serial_clear_delimiters (serial_t *s)
+{
+    free (s->delimiters);
+    s->delimiters = NULL;
+}
 
 void serial_destroy(serial_t* s)
 {
@@ -199,7 +215,6 @@ void serial_destroy(serial_t* s)
 int serial_connect(serial_t* s, char device[], int baud)
 {
 
-    struct termios oldtio;
     //struct termios tty;
 
     // Resolve baud.
@@ -220,6 +235,9 @@ int serial_connect(serial_t* s, char device[], int baud)
     }
 
 
+#if 1
+    struct termios oldtio;
+
     //Retrieve settings.
     tcgetattr(s->fd, &oldtio);
     //Set baud rate.
@@ -238,11 +256,14 @@ oldtio.c_cc[VTIME] = 0;     /* block untill a timer expires (n * 100 mSec.) */
 //oldtio.
     //Apply settings.
     tcsetattr(s->fd, TCSANOW, &oldtio);
+#endif
 
 #if 0
     ////////////
     // Set up serial port parameters
     // Read in existing settings, and handle any error
+    struct termios tty;
+
     if(tcgetattr(s->fd, &tty) != 0) {
         printf("Error %i from tcgetattr: %s\n", errno, strerror(errno));
         return -1;

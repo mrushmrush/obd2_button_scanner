@@ -83,10 +83,10 @@ extern "C" {
     //   adds character to a set.
     //   if set not empty, receive thread looks for delim char received and sets flag
     //   Better, receive thread sends signal or calls callback
-    int serial_add_delimiter (char delimiter);
+    void serial_add_delimiter (serial_t* s, char delimiter);
 
     // Clear delimiter character set
-    int serial_clear_delimiters (void);
+    void serial_clear_delimiters (serial_t* s);
 
     // Affirm delimiter character received
     //  0=delim not received
